@@ -17,7 +17,155 @@
 
 #pragma warning( disable : 4100 )
 
+#include <WebAuthenticationCoreManagerInterop.h>
+#include <wrl\wrappers\corewrappers.h>
+#include <wrl\client.h>
+#include <wrl\ftm.h>
+#include <windows.foundation.h>
+#include <windows.security.authentication.web.core.h>
+#include <windows.security.authentication.identity.provider.h>
+#include <windows.security.credentials.h>
+#include <windows.foundation.collections.h>
+
 using namespace DirectX;
+using namespace Microsoft::WRL;
+using namespace Microsoft::WRL::Wrappers;
+using namespace ABI::Windows::Foundation;
+using namespace ABI::Windows::Foundation::Collections;
+using namespace ABI::Windows::Security::Authentication::Web::Core;
+using namespace ABI::Windows::Security::Credentials;
+
+#include "ModernAsyncHelper.h"
+
+static Microsoft::WRL::ComPtr<IWebAuthenticationCoreManagerInterop> GetTokenBrokerForCentennial()
+{
+    static ComPtr<IWebAuthenticationCoreManagerInterop> s_TokenBrokerInterop;
+
+    if (s_TokenBrokerInterop == nullptr)
+    {
+        ComPtr<IInspectable> webAuthManagerStatics;
+        HRESULT hr = GetActivationFactory(HStringReference(RuntimeClass_Windows_Security_Authentication_Web_Core_WebAuthenticationCoreManager).Get(), &webAuthManagerStatics);
+        if (SUCCEEDED(hr))
+        {
+            webAuthManagerStatics.As(&s_TokenBrokerInterop);
+        }
+    }
+
+    return s_TokenBrokerInterop;
+}
+
+
+HRESULT
+_AddRequestProperty(
+    IMap<HSTRING, HSTRING>* pProperties,
+    PCWSTR pszKey,
+    PCWSTR pszValue
+)
+{
+    HRESULT hr;
+    HSTRING_HEADER hshKey;
+    HSTRING hsKey;
+    hr = WindowsCreateStringReference(
+        pszKey,
+        static_cast<UINT32>(wcslen(pszKey)),
+        &hshKey,
+        &hsKey);
+
+    if (SUCCEEDED(hr))
+    {
+        HSTRING_HEADER hshValue;
+        HSTRING hsValue;
+        hr = WindowsCreateStringReference(
+            pszValue,
+            static_cast<UINT32>(wcslen(pszValue)),
+            &hshValue,
+            &hsValue);
+        if (SUCCEEDED(hr))
+        {
+            boolean bUnused;
+            hr = pProperties->Insert(hsKey, hsValue, &bUnused);
+        }
+    }
+
+    return hr;
+}
+
+void TCUI()
+{
+    HRESULT hr = S_OK;
+    IWebAuthenticationCoreManagerStatics* pWebAccountManager;
+    hr = GetActivationFactory(HStringReference(RuntimeClass_Windows_Security_Authentication_Web_Core_WebAuthenticationCoreManager).Get(), &pWebAccountManager);
+
+    //ComPtr<ABI::Windows::Foundation::IAsyncOperation<::ABI::Windows::Security::Authentication::Web::Core::WebTokenRequestResult*>> wrlAsyncOp;
+    //auto tokenBroker = GetTokenBrokerForCentennial();
+
+    HSTRING_HEADER hshXblAccountProvider;
+    HSTRING hsXblAccountProvider;
+    hr = WindowsCreateStringReference(
+        L"https://xsts.auth.xboxlive.com",
+        static_cast<UINT32>(wcslen(L"https://xsts.auth.xboxlive.com")),
+        &hshXblAccountProvider,
+        &hsXblAccountProvider);
+
+    IAsyncOperation<WebAccountProvider*>* pFindProviderOp;
+    hr = pWebAccountManager->FindAccountProviderAsync(hsXblAccountProvider, &pFindProviderOp);
+
+    IWebAccountProvider* pWebAccountProvider;
+    hr = WaitForCompletionAndGetResults(pFindProviderOp, &pWebAccountProvider);
+
+    IWebTokenRequestFactory* pWebTokenRequestFactory;
+    hr = GetActivationFactory(HStringReference(RuntimeClass_Windows_Security_Authentication_Web_Core_WebTokenRequest).Get(), &pWebTokenRequestFactory);
+
+    IWebTokenRequest* pWebTokenRequest;
+    hr = pWebTokenRequestFactory->CreateWithProvider(pWebAccountProvider, &pWebTokenRequest);
+
+    Collections::IMap<HSTRING, HSTRING>* pRequestProperties;
+    hr = pWebTokenRequest->get_Properties(&pRequestProperties);
+    hr = _AddRequestProperty(pRequestProperties, L"Url", L"https://xboxlive.com");
+    hr = _AddRequestProperty(pRequestProperties, L"Target", L"xboxlive.signin");
+    hr = _AddRequestProperty(pRequestProperties, L"Policy", L"DELEGATION");
+
+    auto tokenBroker = GetTokenBrokerForCentennial();
+    ComPtr<IAsyncOperation<WebTokenRequestResult*>> wrlAsyncOp;
+    tokenBroker->RequestTokenForWindowAsync(GetForegroundWindow(), pWebTokenRequest, IID_PPV_ARGS(&wrlAsyncOp));
+
+    IWebTokenRequestResult* pRequestResult;
+    hr = WaitForCompletionAndGetResults(wrlAsyncOp.Get(), &pRequestResult);
+
+    //IAsyncOperation<WebTokenRequestResult*>* pGetTokenOp;
+    //hr = pWebAccountManager->RequestTokenAsync(pWebTokenRequest, &pGetTokenOp);
+
+    //IWebTokenRequestResult* pRequestResult;
+    //hr = WaitForCompletionAndGetResults(pGetTokenOp, &pRequestResult);
+
+    WebTokenRequestStatus eRequestStatus;
+    hr = pRequestResult->get_ResponseStatus(&eRequestStatus);
+
+
+
+    //hr = _CompleteTokenRequest(pGetTokenOp);
+
+    //webTokenRequest->get_Properties()
+        //
+    //ComPtr<IInspectable> inspectableRequest = reinterpret_cast<IInspectable*>(static_cast<Platform::Object^>(request));
+    //tokenBroker->RequestTokenForWindowAsync(GetForegroundWindow(), inspectableRequest.Get(), IID_PPV_ARGS(&wrlAsyncOp));
+    //auto asyncOp = static_cast<Windows::Foundation::IAsyncOperation<Windows::Security::Authentication::Web::Core::WebTokenRequestResult^>^>(reinterpret_cast<Platform::Object^>(static_cast<IInspectable*>(wrlAsyncOp.Get())));
+
+    //create_task(asyncOp)
+    //    .then([&tokenResult, &retException, completeEvent](task<WebTokenRequestResult^> t)
+    //{
+    //    try
+    //    {
+    //        tokenResult = t.get();
+    //        completeEvent->Set();
+    //    }
+    //    catch (Exception^ ex)
+    //    {
+    //        retException = ex;
+    //        completeEvent->Set();
+    //    }
+    //});
+}
 
 //--------------------------------------------------------------------------------------
 // Global variables
@@ -65,6 +213,7 @@ ID3D11Buffer*                       g_pcbVSPerFrame11 = nullptr;
 #define IDC_TOGGLEREF           2
 #define IDC_CHANGEDEVICE        3
 #define IDC_TOGGLEWARP          4
+#define IDC_TCUI                5
 
 //--------------------------------------------------------------------------------------
 // Forward declarations 
@@ -91,6 +240,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 void InitApp();
 void RenderText();
 
+void TCUI();
 
 //--------------------------------------------------------------------------------------
 // Entry point to the program. Initializes everything and goes into a message processing 
@@ -150,6 +300,7 @@ void InitApp()
     g_HUD.AddButton( IDC_CHANGEDEVICE, L"Change device (F2)", 0, iY += iYo, 170, 22, VK_F2 );
     g_HUD.AddButton( IDC_TOGGLEREF, L"Toggle REF (F3)", 0, iY += iYo, 170, 22, VK_F3 );
     g_HUD.AddButton( IDC_TOGGLEWARP, L"Toggle WARP (F4)", 0, iY += iYo, 170, 22, VK_F4 );
+    g_HUD.AddButton( IDC_TCUI, L"TCUI (F5)", 0, iY += iYo, 170, 22, VK_F5);
 
     g_SampleUI.SetCallback( OnGUIEvent ); iY = 10;
 }
@@ -478,5 +629,10 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
         case IDC_CHANGEDEVICE:
             g_SettingsDlg.SetActive( !g_SettingsDlg.IsActive() );
             break;
+
+        case IDC_TCUI:
+            TCUI();
+            break;
     }
 }
+
