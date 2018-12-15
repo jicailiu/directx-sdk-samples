@@ -15,6 +15,8 @@
 #include "SDKmesh.h"
 #include "resource.h"
 
+//#include <winrt.h>
+
 #pragma warning( disable : 4100 )
 
 #include <WebAuthenticationCoreManagerInterop.h>
@@ -90,6 +92,55 @@ _AddRequestProperty(
     return hr;
 }
 
+class WebAuthenticationCoreAsyncOPerationCompletionHandler :
+    public RuntimeClass<
+    RuntimeClassFlags<Delegate>,
+    IAsyncOperationCompletedHandler<WebTokenRequestResult*>>
+{
+public:
+    HRESULT RuntimeClassInitialize(_In_ HWND hwnd)
+    {
+        m_hwnd = hwnd;
+        return S_OK;
+    }
+    // IAsyncOperationCompletedHandler<UINT32>, GetItemCountAsync callback
+    IFACEMETHOD(Invoke)(_In_ IAsyncOperation<WebTokenRequestResult*>* operation, AsyncStatus status)
+    {
+        if (static_cast<int>(Completed) == static_cast<int>(status)) // Use static_cast to work around OACR warning
+        {
+            HRESULT hr = S_OK;
+            ComPtr<IWebTokenRequestResult> result;
+            hr = operation->GetResults(&result);
+
+            ComPtr<IVectorView<WebTokenResponse*>> responseData;
+            hr = result->get_ResponseData(&responseData);
+
+            HSTRING token;
+            ComPtr<IWebTokenResponse> tokenResponse;
+            hr = responseData.Get()->GetAt(0, &tokenResponse);
+            if (hr == E_BOUNDS)
+            {
+                //swprintf_s(g_TokenString, ARRAYSIZE(g_TokenString), L"%s", L"No response from the plugin apps");
+                return S_OK;
+            }
+
+            hr = tokenResponse->get_Token(&token);
+            //swprintf_s(g_TokenString, ARRAYSIZE(g_TokenString), L"%s%s", L"token = ", token.GetRawBuffer(NULL));
+            //PostMessage(m_hwnd, WM_COMMAND, IDC_SHOWTOKEN, 0);
+            return S_OK;
+        }
+
+        return E_FAIL;
+    }
+
+private:
+
+    HWND m_hwnd = nullptr;
+};
+
+ComPtr<IAsyncOperation<WebTokenRequestResult*>> wrlAsyncOp;
+
+
 void TCUI()
 {
     HRESULT hr = S_OK;
@@ -126,11 +177,19 @@ void TCUI()
     hr = _AddRequestProperty(pRequestProperties, L"Policy", L"DELEGATION");
 
     auto tokenBroker = GetTokenBrokerForCentennial();
-    ComPtr<IAsyncOperation<WebTokenRequestResult*>> wrlAsyncOp;
-    tokenBroker->RequestTokenForWindowAsync(GetForegroundWindow(), pWebTokenRequest, IID_PPV_ARGS(&wrlAsyncOp));
 
-    IWebTokenRequestResult* pRequestResult;
-    hr = WaitForCompletionAndGetResults(wrlAsyncOp.Get(), &pRequestResult);
+    auto dxhwnd = DXUTGetHWND();
+
+    ComPtr<IAsyncOperationCompletedHandler<WebTokenRequestResult*>> callback;
+    MakeAndInitialize<WebAuthenticationCoreAsyncOPerationCompletionHandler>(callback.GetAddressOf(), dxhwnd);
+
+    tokenBroker->RequestTokenForWindowAsync(dxhwnd, pWebTokenRequest, IID_PPV_ARGS(&wrlAsyncOp));
+    wrlAsyncOp->put_Completed(callback.Get());
+
+    //IWebTokenRequestResult* pRequestResult;
+    //hr = WaitForCompletionAndGetResults(wrlAsyncOp.Get(), &pRequestResult);
+
+
 
     //IAsyncOperation<WebTokenRequestResult*>* pGetTokenOp;
     //hr = pWebAccountManager->RequestTokenAsync(pWebTokenRequest, &pGetTokenOp);
@@ -138,10 +197,8 @@ void TCUI()
     //IWebTokenRequestResult* pRequestResult;
     //hr = WaitForCompletionAndGetResults(pGetTokenOp, &pRequestResult);
 
-    WebTokenRequestStatus eRequestStatus;
-    hr = pRequestResult->get_ResponseStatus(&eRequestStatus);
-
-
+    //WebTokenRequestStatus eRequestStatus;
+    //hr = pRequestResult->get_ResponseStatus(&eRequestStatus);
 
     //hr = _CompleteTokenRequest(pGetTokenOp);
 
@@ -255,6 +312,8 @@ int WINAPI wWinMain( _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
 
     // DXUT will create and use the best device
     // that is available on the system depending on which D3D callbacks are set below
+
+    HRESULT hr = Windows::Foundation::Initialize(RO_INIT_MULTITHREADED);
 
     // Set DXUT callbacks
     DXUTSetCallbackMsgProc( MsgProc );
