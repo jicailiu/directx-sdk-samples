@@ -28,6 +28,7 @@
 #include <windows.security.authentication.identity.provider.h>
 #include <windows.security.credentials.h>
 #include <windows.foundation.collections.h>
+#include <gamingtcui.h>
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -141,7 +142,7 @@ private:
 ComPtr<IAsyncOperation<WebTokenRequestResult*>> wrlAsyncOp;
 
 
-void TCUI()
+void SigninUI()
 {
     HRESULT hr = S_OK;
     IWebAuthenticationCoreManagerStatics* pWebAccountManager;
@@ -224,6 +225,26 @@ void TCUI()
     //});
 }
 
+void WINAPI UICompletionRoutine(
+    _In_ HRESULT returnCode,
+    _In_ void* context
+)
+{
+    int a = 1;
+}
+
+void TCUI()
+{
+    HRESULT hr = S_OK;
+
+    hr = ShowProfileCardUI(
+        HStringReference(L"2814613569642996").Get(),
+        UICompletionRoutine,
+        nullptr
+    );
+
+}
+
 //--------------------------------------------------------------------------------------
 // Global variables
 //--------------------------------------------------------------------------------------
@@ -270,7 +291,8 @@ ID3D11Buffer*                       g_pcbVSPerFrame11 = nullptr;
 #define IDC_TOGGLEREF           2
 #define IDC_CHANGEDEVICE        3
 #define IDC_TOGGLEWARP          4
-#define IDC_TCUI                5
+#define IDC_SIGNINUI            5
+#define IDC_TCUI                6
 
 //--------------------------------------------------------------------------------------
 // Forward declarations 
@@ -296,7 +318,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 
 void InitApp();
 void RenderText();
-
+void SigninUI();
 void TCUI();
 
 //--------------------------------------------------------------------------------------
@@ -359,7 +381,8 @@ void InitApp()
     g_HUD.AddButton( IDC_CHANGEDEVICE, L"Change device (F2)", 0, iY += iYo, 170, 22, VK_F2 );
     g_HUD.AddButton( IDC_TOGGLEREF, L"Toggle REF (F3)", 0, iY += iYo, 170, 22, VK_F3 );
     g_HUD.AddButton( IDC_TOGGLEWARP, L"Toggle WARP (F4)", 0, iY += iYo, 170, 22, VK_F4 );
-    g_HUD.AddButton( IDC_TCUI, L"TCUI (F5)", 0, iY += iYo, 170, 22, VK_F5);
+    g_HUD.AddButton( IDC_SIGNINUI, L"Signin UI (F5)", 0, iY += iYo, 170, 22, VK_F5);
+    g_HUD.AddButton( IDC_TCUI, L"TCUI (F6)", 0, iY += iYo, 170, 22, VK_F6);
 
     g_SampleUI.SetCallback( OnGUIEvent ); iY = 10;
 }
@@ -688,7 +711,9 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
         case IDC_CHANGEDEVICE:
             g_SettingsDlg.SetActive( !g_SettingsDlg.IsActive() );
             break;
-
+        case IDC_SIGNINUI:
+            SigninUI();
+            break;
         case IDC_TCUI:
             TCUI();
             break;
